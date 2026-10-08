@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Shop {
+  id              String   @id @default(cuid())
+  myshopifyDomain String   @unique
+  isMasterChannel Boolean  @default(false)
+  channelName     String?
+  accessToken     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  productMappings ProductMapping[]
+  channelOrders   ChannelOrder[]
+  inventoryLogs   InventoryLog[]
+  syncJobs        SyncJob[]
+}
+
+model ProductMapping {
+  id               String  @id @default(cuid())
+  shopId           String
+  masterProductId  String?
+  masterVariantId  String?
+  channelProductId String?
+  channelVariantId String?
+  sku              String
+  barcode          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, sku])
+  @@index([sku])
+}
+
+model ChannelOrder {
+  id        String   @id @default(cuid())
+  shopId    String
+  orderId   String
+  sku       String
+  quantity  Int
+  orderedAt DateTime
+  createdAt DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, orderedAt])
+  @@index([sku])
+}
+
+model InventoryLog {
+  id             String   @id @default(cuid())
+  shopId         String?
+  sku            String
+  quantityChange Int
+  reason         String
+  orderId        String?
+  createdAt      DateTime @default(now())
+
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@index([sku, createdAt])
+}
+
+model SyncJob {
+  id           String   @id @default(cuid())
+  shopId       String?
+  jobType      String
+  status       String // pending, running, completed, failed
+  payload      Json?
+  errorMessage String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
