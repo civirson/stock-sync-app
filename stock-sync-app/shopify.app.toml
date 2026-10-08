@@ -1,6 +1,6 @@
 # This file stores configurations for your Shopify app.
 
-client_id = ""
+client_id = "6f1103717b9f6143b56a7a4b5f7cf29e"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access-scopes
