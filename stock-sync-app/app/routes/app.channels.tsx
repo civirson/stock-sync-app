@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useSubmit } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigate } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -68,9 +68,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function ChannelsPage() {
   const { masterShop, channels } = useLoaderData<typeof loader>();
   const submit = useSubmit();
+  const navigate = useNavigate();
   const [domain, setDomain] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [channelName, setChannelName] = useState("");
+  const [oauthDomain, setOauthDomain] = useState("");
 
   const rows = channels.map((channel) => [
     channel.channelName ?? channel.myshopifyDomain,
@@ -164,6 +166,47 @@ export default function ChannelsPage() {
                     }}
                   >
                     Kanal Ekle
+                  </Button>
+                </FormLayout>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Shopify Mağazası Bağla (Önerilen)
+                </Text>
+                <Banner tone="info">
+                  Hedef mağazanın yöneticisi olarak giriş yaptığınız bir
+                  tarayıcı sekmesinde bu bağlantıyı kullanın. Shopify güvenli
+                  OAuth akışıyla token otomatik kaydedilir.
+                </Banner>
+                <FormLayout>
+                  <TextField
+                    label="MyShopify Domain"
+                    value={oauthDomain}
+                    onChange={setOauthDomain}
+                    autoComplete="off"
+                    placeholder="ornek.myshopify.com"
+                    helpText="Bağlanacak mağazanın myshopify.com adresi"
+                  />
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      const normalized = oauthDomain
+                        .trim()
+                        .toLowerCase()
+                        .replace(/^https?:\/\//, "");
+                      if (!normalized) return;
+                      window.open(
+                        `/auth/login?shop=${encodeURIComponent(normalized)}`,
+                        "_blank",
+                      );
+                    }}
+                  >
+                    Shopify ile Bağlan
                   </Button>
                 </FormLayout>
               </BlockStack>

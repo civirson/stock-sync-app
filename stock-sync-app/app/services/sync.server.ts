@@ -1,5 +1,6 @@
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import prisma from "../db.server";
+import { unauthenticated } from "../shopify.server";
 import { getMasterShop, getConnectedChannels } from "./shop.server";
 import {
   getVariantInventoryDetails,
@@ -89,8 +90,11 @@ export async function runFullSync(admin: AdminApiContext) {
       if (mapping.shop.isMasterChannel || !mapping.channelVariantId) continue;
 
       try {
+        const { admin: channelAdmin } = await unauthenticated.admin(
+          mapping.shop.myshopifyDomain,
+        );
         const channelDetails = await getVariantInventoryDetails(
-          admin,
+          channelAdmin,
           mapping.channelVariantId,
         );
         if (!channelDetails?.inventoryItem?.tracked) continue;
@@ -101,7 +105,7 @@ export async function runFullSync(admin: AdminApiContext) {
 
         if (channelLevel.available !== masterLevel.available) {
           await setInventoryOnHand(
-            admin,
+            channelAdmin,
             channelDetails.inventoryItem.id,
             channelLevel.location.id,
             masterLevel.available,

@@ -33,7 +33,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response();
   }
 
-  await pushStockToChannels(admin, inventoryItem.sku, payload.available);
+  await pushStockToChannels(inventoryItem.sku, payload.available);
 
   return new Response();
 };

@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate, unauthenticated } from "../shopify.server";
-import { getShopByDomain } from "../services/shop.server";
+import { getShopByDomain, getMasterShop } from "../services/shop.server";
 import { adjustInventory, getVariantInventoryDetails } from "../services/inventory.server";
 import prisma from "../db.server";
 
@@ -31,7 +31,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response();
   }
 
-  const { admin } = await unauthenticated.admin(shop);
+  const masterShop = await getMasterShop();
+  if (!masterShop) {
+    console.warn("No master shop configured");
+    return new Response();
+  }
+
+  const { admin } = await unauthenticated.admin(masterShop.myshopifyDomain);
 
   for (const item of payload.line_items) {
     if (!item.sku) continue;

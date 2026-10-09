@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate, unauthenticated } from "../shopify.server";
-import { getShopByDomain } from "../services/shop.server";
+import { getShopByDomain, getMasterShop } from "../services/shop.server";
 import { decreaseMasterStockForChannelOrder } from "../services/inventory.server";
 
 interface OrderLineItem {
@@ -33,7 +33,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response();
   }
 
-  const { admin } = await unauthenticated.admin(shop);
+  const masterShop = await getMasterShop();
+  if (!masterShop) {
+    console.warn("No master shop configured");
+    return new Response();
+  }
+
+  const { admin } = await unauthenticated.admin(masterShop.myshopifyDomain);
 
   const lineItems = payload.line_items.map((item) => ({
     sku: item.sku,

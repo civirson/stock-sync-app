@@ -1,5 +1,6 @@
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import prisma from "../db.server";
+import { unauthenticated } from "../shopify.server";
 import { getMappingsBySku } from "./mapping.server";
 
 interface GraphQLResponse<T> {
@@ -290,7 +291,6 @@ export async function decreaseMasterStockForChannelOrder(
 }
 
 export async function pushStockToChannels(
-  admin: AdminApiContext,
   sku: string,
   newAvailable: number,
 ) {
@@ -305,8 +305,12 @@ export async function pushStockToChannels(
     if (mapping.shop.isMasterChannel) continue;
     if (!mapping.channelVariantId) continue;
 
+    const { admin: channelAdmin } = await unauthenticated.admin(
+      mapping.shop.myshopifyDomain,
+    );
+
     const details = await getVariantInventoryDetails(
-      admin,
+      channelAdmin,
       mapping.channelVariantId,
     );
     if (!details?.inventoryItem?.tracked) continue;
@@ -315,7 +319,7 @@ export async function pushStockToChannels(
     if (!level) continue;
 
     await setInventoryOnHand(
-      admin,
+      channelAdmin,
       details.inventoryItem.id,
       level.location.id,
       newAvailable,
