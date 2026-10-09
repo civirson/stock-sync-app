@@ -36,7 +36,9 @@ export async function upsertShopFromSession(session: Session, isMaster = false) 
     },
     update: {
       accessToken,
-      isMasterChannel: isMaster,
+      ...(isMaster
+        ? { isMasterChannel: true, channelName: "Ana Mağaza" }
+        : {}),
     },
   });
 }

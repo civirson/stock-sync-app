@@ -15,14 +15,27 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { upsertShopFromSession } from "../services/shop.server";
+import { upsertShopFromSession, setMasterChannel } from "../services/shop.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
 
-  // Register current shop as master if none exists
-  const masterCount = await prisma.shop.count({ where: { isMasterChannel: true } });
-  await upsertShopFromSession(session, masterCount === 0);
+  // Register current shop and preserve its master role; auto-assign oldest
+  // shop as master only when no master exists.
+  await upsertShopFromSession(session);
+
+  const masterCount = await prisma.shop.count({
+    where: { isMasterChannel: true },
+  });
+
+  if (masterCount === 0) {
+    const oldestShop = await prisma.shop.findFirst({
+      orderBy: { createdAt: "asc" },
+    });
+    if (oldestShop) {
+      await setMasterChannel(oldestShop.id);
+    }
+  }
 
   const masterShop = await prisma.shop.findFirst({
     where: { isMasterChannel: true },
