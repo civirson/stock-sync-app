@@ -26,8 +26,20 @@ import {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-  const masterShop = await getMasterShop();
+  let masterShop = await getMasterShop();
   const channels = await getConnectedChannels();
+
+  // Auto-assign the oldest connected channel as master if none exists
+  if (!masterShop && channels.length > 0) {
+    const oldestChannel = channels.reduce((oldest, current) =>
+      new Date(current.createdAt) < new Date(oldest.createdAt)
+        ? current
+        : oldest,
+    );
+    await setMasterChannel(oldestChannel.id);
+    masterShop = await getMasterShop();
+  }
+
   return { masterShop, channels };
 };
 
