@@ -18,7 +18,7 @@ import {
   Badge,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate, registerWebhooks } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { upsertShopFromSession, setMasterChannel } from "../services/shop.server";
 import { runFullSync } from "../services/sync.server";
@@ -29,13 +29,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Register current shop and preserve its master role; auto-assign oldest
   // shop as master only when no master exists.
   await upsertShopFromSession(session);
-
-  // Register Shopify webhooks automatically every time the app is opened.
-  try {
-    await registerWebhooks({ session });
-  } catch (error) {
-    console.error("Webhook registration failed:", error);
-  }
 
   const masterCount = await prisma.shop.count({
     where: { isMasterChannel: true },
@@ -82,40 +75,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent") as string;
+  const { admin } = await authenticate.admin(request);
 
-  if (intent === "registerWebhooks") {
-    try {
-      await registerWebhooks({ session });
-      return { success: true, message: "Webhook'lar kaydedildi." };
-    } catch (error) {
-      console.error("Webhook registration failed:", error);
-      return {
-        success: false,
-        message: `Webhook kaydı başarısız: ${(error as Error).message}`,
-      };
-    }
+  try {
+    const result = await runFullSync(admin);
+    return {
+      success: true,
+      message: `${result.stockUpdated} stok güncellendi, ${result.ordersProcessed} sipariş işlendi.`,
+    };
+  } catch (error) {
+    console.error("Sync failed:", error);
+    return {
+      success: false,
+      message: `Senkronizasyon başarısız: ${(error as Error).message}`,
+    };
   }
-
-  if (intent === "syncStock") {
-    try {
-      const result = await runFullSync(admin);
-      return {
-        success: true,
-        message: `${result.updatedCount} ürün senkronize edildi.`,
-      };
-    } catch (error) {
-      console.error("Stock sync failed:", error);
-      return {
-        success: false,
-        message: `Senkronizasyon başarısız: ${(error as Error).message}`,
-      };
-    }
-  }
-
-  return null;
 };
 
 export default function Index() {
@@ -179,24 +153,15 @@ export default function Index() {
                   <Button url="/app/mapping">Ürün Eşleştirme</Button>
                   <Button url="/app/reports">Satış Raporu</Button>
                 </InlineStack>
-                <InlineStack gap="300">
-                  <Button
-                    variant="primary"
-                    onClick={() =>
-                      submit({ intent: "registerWebhooks" }, { method: "post" })
-                    }
-                  >
-                    Webhook'ları Kur
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={() =>
-                      submit({ intent: "syncStock" }, { method: "post" })
-                    }
-                  >
-                    Stokları Senkronize Et
-                  </Button>
-                </InlineStack>
+                <Button
+                  variant="primary"
+                  size="large"
+                  onClick={() =>
+                    submit(null, { method: "post" })
+                  }
+                >
+                  Şimdi Senkronize Et
+                </Button>
               </BlockStack>
             </Card>
           </Layout.Section>
