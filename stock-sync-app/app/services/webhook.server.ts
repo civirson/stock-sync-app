@@ -8,10 +8,55 @@ const WEBHOOK_TOPICS = [
   },
 ] as const;
 
+interface WebhookSubscriptionNode {
+  id: string;
+  topic: string;
+  callbackUrl: string;
+}
+
 export async function ensureWebhooks(admin: AdminApiContext, appUrl: string) {
-  for (const { topic, path } of WEBHOOK_TOPICS) {
-    try {
-      const response = await admin.graphql(
+  const baseUrl = appUrl.replace(/\/$/, "");
+
+  try {
+    const listResponse = await admin.graphql(
+      `#graphql
+      query getWebhooks {
+        webhookSubscriptions(first: 50) {
+          edges {
+            node {
+              id
+              topic
+              callbackUrl
+            }
+          }
+        }
+      }`,
+    );
+    const listData = (await listResponse.json()) as {
+      data?: {
+        webhookSubscriptions?: {
+          edges?: Array<{ node: WebhookSubscriptionNode }>;
+        };
+      };
+    };
+    const existing =
+      listData.data?.webhookSubscriptions?.edges?.map((edge) => edge.node) ??
+      [];
+
+    for (const { topic, path } of WEBHOOK_TOPICS) {
+      const callbackUrl = `${baseUrl}${path}`;
+      const alreadyExists = existing.some(
+        (subscription) =>
+          subscription.topic === topic &&
+          subscription.callbackUrl === callbackUrl,
+      );
+
+      if (alreadyExists) {
+        console.log(`Webhook ${topic} already registered`);
+        continue;
+      }
+
+      const createResponse = await admin.graphql(
         `#graphql
         mutation createWebhook($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
           webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
@@ -23,22 +68,29 @@ export async function ensureWebhooks(admin: AdminApiContext, appUrl: string) {
           variables: {
             topic,
             webhookSubscription: {
-              callbackUrl: `${appUrl.replace(/\/$/, "")}${path}`,
+              callbackUrl,
               format: "JSON",
             },
           },
         },
       );
 
-      const responseData = await response.json();
-      const errors = responseData?.data?.webhookSubscriptionCreate?.userErrors;
-      if (errors?.length) {
+      const createData = (await createResponse.json()) as {
+        data?: {
+          webhookSubscriptionCreate?: {
+            userErrors?: Array<{ field: string; message: string }>;
+            webhookSubscription?: { id: string };
+          };
+        };
+      };
+      const errors = createData.data?.webhookSubscriptionCreate?.userErrors;
+      if (errors && errors.length > 0) {
         console.warn(`Webhook ${topic} registration warnings:`, errors);
       } else {
-        console.log(`Webhook ${topic} registered at ${appUrl}${path}`);
+        console.log(`Webhook ${topic} registered at ${callbackUrl}`);
       }
-    } catch (error) {
-      console.error(`Failed to register webhook ${topic}:`, error);
     }
+  } catch (error) {
+    console.error("Failed to ensure webhooks:", error);
   }
 }

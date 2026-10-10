@@ -16,13 +16,18 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { upsertShopFromSession, setMasterChannel } from "../services/shop.server";
+import { ensureWebhooks } from "../services/webhook.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
 
   // Register current shop and preserve its master role; auto-assign oldest
   // shop as master only when no master exists.
   await upsertShopFromSession(session);
+
+  // Ensure required webhooks are registered for the current shop every time
+  // the app is opened, so reinstalls or manual cleanups are not required.
+  await ensureWebhooks(admin, process.env.SHOPIFY_APP_URL || "");
 
   const masterCount = await prisma.shop.count({
     where: { isMasterChannel: true },
