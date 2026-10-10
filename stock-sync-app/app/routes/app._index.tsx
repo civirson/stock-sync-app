@@ -1,5 +1,10 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, Link } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import {
+  useLoaderData,
+  useActionData,
+  useSubmit,
+  Link,
+} from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -13,21 +18,24 @@ import {
   Badge,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import { authenticate, registerWebhooks } from "../shopify.server";
 import prisma from "../db.server";
 import { upsertShopFromSession, setMasterChannel } from "../services/shop.server";
-import { ensureWebhooks } from "../services/webhook.server";
+import { runFullSync } from "../services/sync.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
 
   // Register current shop and preserve its master role; auto-assign oldest
   // shop as master only when no master exists.
   await upsertShopFromSession(session);
 
-  // Ensure required webhooks are registered for the current shop every time
-  // the app is opened, so reinstalls or manual cleanups are not required.
-  await ensureWebhooks(admin, process.env.SHOPIFY_APP_URL || "");
+  // Register Shopify webhooks automatically every time the app is opened.
+  try {
+    await registerWebhooks({ session });
+  } catch (error) {
+    console.error("Webhook registration failed:", error);
+  }
 
   const masterCount = await prisma.shop.count({
     where: { isMasterChannel: true },
@@ -73,6 +81,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session, admin } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const intent = formData.get("intent") as string;
+
+  if (intent === "registerWebhooks") {
+    try {
+      await registerWebhooks({ session });
+      return { success: true, message: "Webhook'lar kaydedildi." };
+    } catch (error) {
+      console.error("Webhook registration failed:", error);
+      return {
+        success: false,
+        message: `Webhook kaydı başarısız: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  if (intent === "syncStock") {
+    try {
+      const result = await runFullSync(admin);
+      return {
+        success: true,
+        message: `${result.updatedCount} ürün senkronize edildi.`,
+      };
+    } catch (error) {
+      console.error("Stock sync failed:", error);
+      return {
+        success: false,
+        message: `Senkronizasyon başarısız: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  return null;
+};
+
 export default function Index() {
   const {
     masterShop,
@@ -81,6 +126,8 @@ export default function Index() {
     recentOrders,
     recentLogs,
   } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const submit = useSubmit();
 
   const orderRows = recentOrders.map((order) => [
     order.shop.channelName ?? order.shop.myshopifyDomain,
@@ -107,6 +154,12 @@ export default function Index() {
           </Banner>
         )}
 
+        {actionData?.message && (
+          <Banner tone={actionData.success ? "success" : "critical"}>
+            {actionData.message}
+          </Banner>
+        )}
+
         <Layout>
           <Layout.Section>
             <Card>
@@ -125,6 +178,24 @@ export default function Index() {
                   <Button url="/app/channels">Kanal Yönetimi</Button>
                   <Button url="/app/mapping">Ürün Eşleştirme</Button>
                   <Button url="/app/reports">Satış Raporu</Button>
+                </InlineStack>
+                <InlineStack gap="300">
+                  <Button
+                    variant="primary"
+                    onClick={() =>
+                      submit({ intent: "registerWebhooks" }, { method: "post" })
+                    }
+                  >
+                    Webhook'ları Kur
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() =>
+                      submit({ intent: "syncStock" }, { method: "post" })
+                    }
+                  >
+                    Stokları Senkronize Et
+                  </Button>
                 </InlineStack>
               </BlockStack>
             </Card>
@@ -165,7 +236,13 @@ export default function Index() {
               <BlockStack gap="200">
                 <Text as="h2" variant="headingMd">Son Stok Hareketleri</Text>
                 <DataTable
-                  columnContentTypes={["text", "text", "numeric", "text", "text"]}
+                  columnContentTypes={[
+                    "text",
+                    "text",
+                    "numeric",
+                    "text",
+                    "text",
+                  ]}
                   headings={["Kanal", "SKU", "Değişim", "Neden", "Tarih"]}
                   rows={logRows.length ? logRows : [["—", "—", "—", "—", "—"]]}
                 />
